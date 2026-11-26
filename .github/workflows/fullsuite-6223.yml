@@ -1,0 +1,44 @@
+name: fullsuite-6223 (fork only)
+on:
+  push:
+    branches: [ 'ci/fullsuite-6223' ]
+permissions:
+  contents: read
+jobs:
+  suite:
+    name: npm test shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      GSD_PLUGIN_ROOT: .ci-gsd-plugin-root-disabled
+      GSD_STRICT_LIVE_CONFIG_GUARD: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0bd1e02817b853b8aa989af16150d11b191254e3
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+          git fetch -q origin next:refs/remotes/origin/next || true
+          git log -1 --format='tested head %H'
+      - run: npm ci
+      - name: Full suite, this shard
+        shell: bash
+        run: |
+          set +e
+          node scripts/run-tests.cjs --shard ${{ matrix.shard }}/4 > out.txt 2>&1
+          code=$?
+          tail -40 out.txt
+          echo "== exit code: $code"
+          awk '/^# (tests|pass|fail|cancelled|skipped|todo) [0-9]+$/ {s[$2]+=$3} END {printf "== SHARD TOTAL tests %d pass %d fail %d cancelled %d skipped %d todo %d\n", s["tests"], s["pass"], s["fail"], s["cancelled"], s["skipped"], s["todo"]}' out.txt
+          grep -E "^\s*not ok" out.txt | head -30
+          exit $code
